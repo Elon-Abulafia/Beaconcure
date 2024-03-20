@@ -5,7 +5,8 @@ from typing import Any
 from threading import Thread
 from datetime import datetime
 from data_layer import manager_factory
-from bs4 import BeautifulSoup, element, Tag
+from bs4.element import Tag
+from bs4 import BeautifulSoup, element
 from parsers import Parser, register_parser
 
 
