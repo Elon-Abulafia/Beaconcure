@@ -127,6 +127,7 @@ class HTMLParser(Parser):
         if match:
             creation_date_str = match.group(1)
             country = match.group(2)
+
             try:
                 creation_date = datetime.strptime(creation_date_str, self.date_format).strftime("%d-%m-%Y")
             except ValueError:
