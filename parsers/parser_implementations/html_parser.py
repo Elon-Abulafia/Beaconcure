@@ -8,6 +8,8 @@ from data_layer import manager_factory
 from bs4.element import Tag
 from bs4 import BeautifulSoup, element
 from parsers import Parser, register_parser
+from consts import YEAR, MONTH, DAY, HEADER_MAX_LENGTH, MAX_ROW_SUM
+from validator import DocumentValidator, DateValidator, HeaderLengthValidator, TotalSumValidator, ValidationStatus
 
 
 @register_parser("html")
@@ -33,9 +35,19 @@ class HTMLParser(Parser):
         self.country_date_regex = country_date_regex
         self.date_format = date_format
         self.html_document = None
+        self.data_collection = "html data"
+        self.discrepancy_collection = "html discrepancies"
 
-        self.collection_name = kwargs.get("collection_name", "html data")
-        self.db_name = kwargs.get("db_name", "0")
+        year = kwargs.get("year", YEAR)
+        month = kwargs.get("month", MONTH)
+        day = kwargs.get("day", DAY)
+
+        self.header_validator = HeaderLengthValidator(
+            header_max_length=kwargs.get("header_max_length", HEADER_MAX_LENGTH),
+            header_tag=head_tag)
+        self.date_validator = DateValidator(max_date=datetime(year, month, day), footer_tag=footer_tag)
+        self.total_sum_validator = TotalSumValidator(max_sum=kwargs.get("max_row_sum", MAX_ROW_SUM),
+                                                     row_container=body_tag)
 
     def parse(self, dir_path: str):
         """Parses all the files given from within a given folder of html files and sends the parsed results to MongoDB.
@@ -65,15 +77,47 @@ class HTMLParser(Parser):
             page_data["creation date"] = creation_date
             page_data["country"] = country
 
-            Thread(target=self.insert_to_mongodb, args=(page_data,)).start()
+            Thread(target=self.insert_to_mongodb, args=(page_data, self.html_document)).start()
 
-    def insert_to_mongodb(self, data: list | object):
-        mongo_manager = manager_factory.get_manager("mongo", db_name=self.db_name)
+    def insert_to_mongodb(self, data: list | object, document: BeautifulSoup):
+        mongo_manager = manager_factory.get_manager("mongo")
+        insert_results = mongo_manager.insert(collection_name=self.data_collection, data=data)
 
-        if mongo_manager.insert(collection_name=self.collection_name, data=data):
-            print(f"Successfully inserted: {data} into db")
+        if insert_results:
+            inserted_ids = insert_results.inserted_ids if isinstance(data, list) else str(insert_results.inserted_id)
+            len_inserted_ids = len(inserted_ids) if isinstance(data, list) else 1
+            print(f"Successfully inserted: {len_inserted_ids} documents into db under {self.data_collection}")
+            self.find_discrepancies(document=document, db_id=inserted_ids, mongo_manager=mongo_manager)
         else:
             print(f"Failed to insert {data} into db")
+
+    def find_discrepancies(self, document: BeautifulSoup, db_id: str, mongo_manager):
+        def find_and_insert_discrepancy_to_db():
+            update_result_dict = lambda results: results[1].update({"discrepancy_type": results[0].value,
+                                                                    "document_id": db_id})
+            validation_results = document_validator.validate(document)
+
+            if not validation_results[0] == ValidationStatus.VALID:
+                print(f"Found discrepancies for {db_id}")
+                update_result_dict(validation_results)
+                insert_results = mongo_manager.insert(collection_name=self.discrepancy_collection,
+                                                      data=validation_results[1])
+                if insert_results:
+                    inserted_id = str(insert_results.inserted_id)
+                    print(f"Successfully inserted: {inserted_id} documents into db under {self.discrepancy_collection}")
+                else:
+                    print(f"Failed to insert {validation_results[1]} into db")
+            else:
+                print(f"No discrepancies found for {db_id}")
+
+        document_validator = DocumentValidator(self.header_validator)
+        find_and_insert_discrepancy_to_db()
+
+        document_validator.strategy = self.date_validator
+        find_and_insert_discrepancy_to_db()
+
+        document_validator.strategy = self.total_sum_validator
+        find_and_insert_discrepancy_to_db()
 
     def extract_field(self, tag: str,
                       get_expression: str = None,
