@@ -1,7 +1,7 @@
 from parsers import Parser
 
 
-class ParserFactory:
+class ParserWrapper:
     def __init__(self):
         self._parsers = {}
 

@@ -1,5 +1,5 @@
-from consts import MONGODB_URI
 from pymongo.cursor import Cursor
+from consts import MONGODB_URI, DB_NAME
 from data_layer import DBManager, register_db_manager
 from pymongo.database import Database
 from pymongo.mongo_client import MongoClient
@@ -7,10 +7,11 @@ from pymongo.mongo_client import MongoClient
 
 @register_db_manager("mongo")
 class MongoDBManager(DBManager):
-    def __init__(self, *args, db_name: str = None, **kwargs):
+    def __init__(self, *args, **kwargs):
         """The MongoDBManager is responsible for every basic interaction with a predefined mongo server.
         In order to connect to the db the environment parameters: MONGODB_PASSWORD, MONGODB_USER, MONGODB_HOST and
         MONGODB_CLUSTER should be defined to your existing database details.
+        DB_NAME should be changed if the default db is not wanted.
 
         Args:
             db_name: The name of the working database, e.g. 'db0'
@@ -19,7 +20,7 @@ class MongoDBManager(DBManager):
         super().__init__(*args, **kwargs)
 
         self.client: MongoClient | None = None
-        self.db_name: str = db_name
+        self.db_name: str = DB_NAME
         self.db: Database | None = None
 
     def connect(self):
@@ -69,13 +70,11 @@ class MongoDBManager(DBManager):
                 response = collection.insert_many(data)
             else:
                 response = collection.insert_one(data)
-
-            result = response.acknowledged
         except Exception as e:
             print(e)
-            result = False
+            response = False
 
-        return result
+        return response
 
     @_query_execution
     def find(self, collection_name: str, query: object = None) -> Cursor | None:
