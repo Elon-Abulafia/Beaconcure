@@ -1,7 +1,7 @@
-from parsers import parser_factory
+from parsers import parser_wrapper
 
 if __name__ == '__main__':
-    html_parser = parser_factory.get_parser(parser_type="html",
+    html_parser = parser_wrapper.get_parser(parser_type="html",
                                             id_tag="table",
                                             title_tag="caption",
                                             head_tag="thead",
